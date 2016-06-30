@@ -7,7 +7,7 @@ var sourcemaps = require('gulp-sourcemaps');
 var babel = require('gulp-babel');
 
 gulp.task('sass', function () {
-  return gulp.src('src/assets/scss/**/*.scss')
+  return gulp.src('src/assets/scss/*.scss')
     .pipe(sourcemaps.init())
     .pipe(sass().on('error', sass.logError))
     .pipe(autoprefixer({
@@ -15,12 +15,14 @@ gulp.task('sass', function () {
       cascade: false
     }))
     .pipe(sourcemaps.write())
-    .pipe(gulp.dest('dest/assets/scss'));
+    .pipe(gulp.dest('dest/assets/stylesheets'));
 });
 
 gulp.task('js', function () {
   return gulp.src('src/assets/javascript/**/*.js')
-    .pipe(babel())
+    .pipe(babel({
+			presets: ['es2015']
+		}))
     .pipe(gulp.dest('dest/assets/javascript'))
 })
 
