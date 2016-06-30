@@ -9,8 +9,8 @@ const TRAINSTATUS = {
 let stageWidth = window.innerWidth;
 let stageHeight = window.innerHeight;
 let paths = {
-  left: document.querySelector('.path__bottom'),
-  right: document.querySelector('.path__top')
+  left: document.querySelector('.train-route--bottom__path'),
+  right: document.querySelector('.train-route--top__path')
 }
 let renderer = new PIXI.autoDetectRenderer(stageWidth, stageHeight, {transparent: true});
 let stage = new PIXI.Container();
@@ -138,6 +138,7 @@ function createTrain(side, texture) {
 function createInteractionZone(position) {
   let zone = new PIXI.Graphics;
   zone.beginFill(0xFF0000);
+  zone.alpha = 0.1;
   zone.drawRect(position.x, position.y, stageWidth / 4, stageHeight);
   zone.interactive = true;
 

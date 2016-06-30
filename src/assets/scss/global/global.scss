@@ -1,9 +1,13 @@
 body {
   margin: 0;
   padding: 0;
-  color: red;
 }
 
 figure {
   margin: 0;
+}
+
+canvas {
+  position: relative;
+  z-index: 999;
 }
