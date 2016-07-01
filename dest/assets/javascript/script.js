@@ -10,46 +10,55 @@ var TRAINSTATUS = {
 };
 var stageWidth = window.innerWidth;
 var stageHeight = window.innerHeight;
-var paths = {
-  left: document.querySelector('.train-route--bottom__path'),
-  right: document.querySelector('.train-route--top__path')
-};
+var pathContainer = document.querySelector('.route-container');
+var path = document.querySelector('.train-route__path');
 var renderer = new PIXI.autoDetectRenderer(stageWidth, stageHeight, { transparent: true });
 var stage = new PIXI.Container();
 var trains = {
   left: [],
   right: []
 };
-
 // Momentum vars
 var trackingPoints = [];
 var friction = 0.92;
 var stopThreshold = 0.3;
 
-function moveTrain(position, side) {
-  var train = trains[side][0].train; // getActiveTrain();
-  var scale = paths[side].getTotalLength() / stageWidth;
-  var pos = paths[side].getPointAtLength(position * scale);
+/*
+ * Train animation
+ */
 
-  console.log(pos);
-  console.log(position);
-  train.position.x = position;
-  train.position.y = pos.y;
+function moveTrain(posX, side, train) {
+  var correction = 1.1042;
+  var scale = path.getTotalLength() / pathContainer.offsetWidth;
+  var svgX = Math.min(Math.max(0, posX), stageWidth);
+  var svgPosition = path.getPointAtLength((svgX - pathContainer.getBoundingClientRect().left) * scale);
+  var posY = pathContainer.getBoundingClientRect().top;
+
+  if (side === 'left') {
+    // animate down - top
+    posY += pathContainer.offsetHeight * 2 - svgPosition.y * correction / scale;
+  } else {
+    // animate top - down
+    posY += svgPosition.y * correction / scale;
+  }
+
+  train.train.position.x = posX;
+  train.train.position.y = posY;
 }
 
-function momentumAnim(side, targetX, decVelX) {
+function momentumAnim(side, targetX, decVelX, train) {
   decVelX *= friction;
   targetX += decVelX;
 
   if (Math.abs(decVelX) > stopThreshold) {
-    moveTrain(targetX, side);
+    moveTrain(targetX, side, train);
     requestAnimationFrame(function () {
-      momentumAnim(side, targetX, decVelX);
+      momentumAnim(side, targetX, decVelX, train);
     });
   }
 }
 
-function startMomentum(side) {
+function startMomentum(side, train) {
   var MULTIPLIER = 1;
   var firstPoint = trackingPoints[0];
   var lastPoint = trackingPoints[trackingPoints.length - 1];
@@ -60,12 +69,12 @@ function startMomentum(side) {
 
   if (Math.abs(decVelX) > 1) {
     requestAnimationFrame(function () {
-      momentumAnim(side, lastPoint.x, decVelX);
+      momentumAnim(side, lastPoint.x, decVelX, train);
     });
   }
 }
 
-function addTrackingPoint(x, side) {
+function addTrackingPoint(x, side, train) {
   var time = Date.now();
   while (trackingPoints.length > 0) {
     if (time - trackingPoints[0].time <= 100) {
@@ -74,11 +83,34 @@ function addTrackingPoint(x, side) {
     trackingPoints.shift();
   }
   trackingPoints.push({ x: x, time: time });
-  moveTrain(x, side);
+  moveTrain(x, side, train);
 }
 
 /*
- * Eventlisteners
+ * Train helpers
+ */
+
+function getActiveTrain(side) {
+  var activeTrain = void 0;
+  for (var i = 0; i < trains[side].length; i++) {
+    if (trains[side][i].status === 1) {
+      activeTrain = trains[side][i];
+    }
+  }
+  return activeTrain;
+}
+
+function setActiveTrain(side) {
+  for (var i = 0; i < trains[side].length; i++) {
+    if (trains[side][i].status === 0) {
+      trains[side][i].status = 1;
+      break;
+    }
+  }
+}
+
+/*
+ * Event listeners
  */
 
 function onTouchStart(event) {
@@ -91,12 +123,17 @@ function onTouchStart(event) {
   if (x > stageWidth / 2) {
     this.side = 'right';
   }
-  addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side);
+  this.train = getActiveTrain(this.side);
+  if (!this.train) {
+    this.moving = false;
+    return;
+  }
+  addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side, this.train);
 }
 
 function onTouchMove() {
   if (this.moving) {
-    addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side);
+    addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side, this.train);
   }
 }
 
@@ -105,8 +142,10 @@ function onTouchEnd() {
     return;
   }
   this.moving = false;
-  addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side);
-  startMomentum(this.side);
+  addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side, this.train);
+  startMomentum(this.side, this.train);
+  this.train.status = 2;
+  setActiveTrain(this.side);
   this.data = null;
 }
 
@@ -117,6 +156,7 @@ function onTouchEnd() {
 function createTrain(side, texture) {
   var train = new PIXI.Sprite(texture);
   var position = { x: 80, y: stageHeight / 2 + 60 };
+  var status = 1;
   if (side === 'right') {
     position.x = stageWidth - 80;
     position.y = stageHeight / 2 - 60;
@@ -127,7 +167,15 @@ function createTrain(side, texture) {
   train.anchor.y = 0.5;
   train.position.x = position.x;
   train.position.y = position.y;
-  trains[side].push({ train: train, status: 0 });
+
+  for (var i = 0; i < trains[side].length; i++) {
+    if (trains[side][i].status === 1) {
+      status = 0;
+      break;
+    }
+  }
+
+  trains[side].push({ train: train, status: status });
   stage.addChild(train);
 }
 
@@ -156,6 +204,12 @@ function onAssetsLoaded(loader, resources) {
   createInteractionZone({ x: 0, y: 0 });
   createInteractionZone({ x: stageWidth - stageWidth / 4, y: 0 });
   createTrain('left', resources.train.texture);
+  createTrain('left', resources.train.texture);
+  createTrain('left', resources.train.texture);
+  createTrain('left', resources.train.texture);
+  createTrain('left', resources.train.texture);
+  createTrain('right', resources.train.texture);
+  createTrain('right', resources.train.texture);
   createTrain('right', resources.train.texture);
 
   // start animating

@@ -1,14 +1,16 @@
-.routes {
+.route-container {
   position: absolute;
   top: 50%;
   left: 50%;
   opacity: 0.2;
   width: 100%;
   z-index: 1;
-  transform: translate3d(-50%, -50%, 0);
+  transform: translate3d(-50%, -100%, 0);
+  line-height: 0;
+  visibility: hidden;
 }
 
 .train-route {
-  position: relative;
+  display: inline-block;
   width: 100%;
 }

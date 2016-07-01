@@ -8,46 +8,59 @@ const TRAINSTATUS = {
 }
 let stageWidth = window.innerWidth;
 let stageHeight = window.innerHeight;
-let paths = {
-  left: document.querySelector('.train-route--bottom__path'),
-  right: document.querySelector('.train-route--top__path')
-}
+let pathContainer = document.querySelector('.route-container');
+let path = document.querySelector('.train-route__path');
 let renderer = new PIXI.autoDetectRenderer(stageWidth, stageHeight, {transparent: true});
 let stage = new PIXI.Container();
 let trains = {
   left: [],
   right: []
 };
-
 // Momentum vars
 let trackingPoints = [];
 let friction = 0.92;
 let stopThreshold = 0.3;
 
-function moveTrain(position, side) {
-  let train = trains[side][0].train; // getActiveTrain();
-  let scale = paths[side].getTotalLength() / stageWidth;
-  let pos = paths[side].getPointAtLength(position * scale);
 
-  console.log(pos);
-  console.log(position);
-  train.position.x = position;
-  train.position.y = pos.y;
+
+
+
+/*
+ * Train animation
+ */
+
+function moveTrain(posX, side, train) {
+  let correction = 1.1042;
+  let scale = path.getTotalLength() / pathContainer.offsetWidth;
+  let svgX = Math.min(Math.max(0, posX), stageWidth);
+  let svgPosition = path.getPointAtLength((svgX - pathContainer.getBoundingClientRect().left) * scale);
+  let posY = pathContainer.getBoundingClientRect().top;
+
+  if (side === 'left') {
+    // animate down - top
+    posY += (pathContainer.offsetHeight * 2) - (svgPosition.y * correction / scale);
+  } else {
+    // animate top - down
+    posY += (svgPosition.y * correction / scale);
+  }
+
+  train.train.position.x = posX;
+  train.train.position.y = posY;
 }
 
-function momentumAnim(side, targetX, decVelX) {
+function momentumAnim(side, targetX, decVelX, train) {
 	decVelX *= friction;
 	targetX += decVelX;
 
 	if (Math.abs(decVelX) > stopThreshold) {
-    moveTrain(targetX, side);
+    moveTrain(targetX, side, train);
     requestAnimationFrame(() => {
-      momentumAnim(side, targetX, decVelX);
+      momentumAnim(side, targetX, decVelX, train);
     });
 	}
 }
 
-function startMomentum(side) {
+function startMomentum(side, train) {
   const MULTIPLIER = 1;
 	let firstPoint = trackingPoints[0];
 	let lastPoint = trackingPoints[trackingPoints.length - 1];
@@ -56,15 +69,15 @@ function startMomentum(side) {
 	let D = (timeOffset / 15) / MULTIPLIER;
   let decVelX = (xOffset / D) || 0; // prevent NaN
 
-	if (Math.abs(decVelX) > 1 ) {
+  if (Math.abs(decVelX) > 1 ) {
 		requestAnimationFrame(() => {
-      momentumAnim(side, lastPoint.x, decVelX);
+      momentumAnim(side, lastPoint.x, decVelX, train);
     });
 	}
 }
 
-function addTrackingPoint(x, side) {
-	var time = Date.now();
+function addTrackingPoint(x, side, train) {
+  let time = Date.now();
 	while (trackingPoints.length > 0) {
 		if (time - trackingPoints[0].time <= 100) {
 			break;
@@ -72,14 +85,39 @@ function addTrackingPoint(x, side) {
 		trackingPoints.shift();
 	}
 	trackingPoints.push({x, time});
-  moveTrain(x, side);
+  moveTrain(x, side, train);
+}
+
+
+
+/*
+ * Train helpers
+ */
+
+function getActiveTrain(side) {
+  let activeTrain;
+  for (var i = 0; i < trains[side].length; i++) {
+    if (trains[side][i].status === 1) {
+      activeTrain = trains[side][i];
+    }
+  }
+  return activeTrain;
+}
+
+function setActiveTrain(side) {
+  for (var i = 0; i < trains[side].length; i++) {
+    if (trains[side][i].status === 0) {
+      trains[side][i].status = 1;
+      break;
+    }
+  }
 }
 
 
 
 
 /*
- * Eventlisteners
+ * Event listeners
  */
 
 function onTouchStart(event) {
@@ -92,12 +130,17 @@ function onTouchStart(event) {
   if (x > stageWidth / 2) {
     this.side = 'right';
   }
-  addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side);
+  this.train = getActiveTrain(this.side);
+  if (!this.train) {
+    this.moving = false;
+    return;
+  }
+  addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side, this.train);
 }
 
 function onTouchMove() {
   if (this.moving) {
-    addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side);
+    addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side, this.train);
   }
 }
 
@@ -106,8 +149,10 @@ function onTouchEnd() {
     return;
   }
   this.moving = false;
-  addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side);
-  startMomentum(this.side);
+  addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side, this.train);
+  startMomentum(this.side, this.train);
+  this.train.status = 2;
+  setActiveTrain(this.side);
   this.data = null;
 }
 
@@ -121,6 +166,7 @@ function onTouchEnd() {
 function createTrain(side, texture) {
   let train = new PIXI.Sprite(texture);
   let position = {x: 80, y: (stageHeight / 2 + 60)};
+  let status = 1;
   if (side === 'right') {
     position.x = stageWidth - 80;
     position.y = stageHeight / 2 - 60;
@@ -131,7 +177,15 @@ function createTrain(side, texture) {
   train.anchor.y = 0.5;
   train.position.x = position.x;
   train.position.y = position.y;
-  trains[side].push({train: train, status: 0});
+
+  for (var i = 0; i < trains[side].length; i++) {
+    if (trains[side][i].status === 1) {
+      status = 0;
+      break;
+    }
+  }
+
+  trains[side].push({train: train, status: status});
   stage.addChild(train);
 }
 
@@ -168,6 +222,12 @@ function onAssetsLoaded(loader, resources) {
   createInteractionZone({x: 0, y: 0});
   createInteractionZone({x: (stageWidth - stageWidth / 4), y: 0});
   createTrain('left', resources.train.texture);
+  createTrain('left', resources.train.texture);
+  createTrain('left', resources.train.texture);
+  createTrain('left', resources.train.texture);
+  createTrain('left', resources.train.texture);
+  createTrain('right', resources.train.texture);
+  createTrain('right', resources.train.texture);
   createTrain('right', resources.train.texture);
 
   // start animating
