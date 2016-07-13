@@ -12,19 +12,19 @@ var stageWidth = window.innerWidth;
 var stageHeight = window.innerHeight;
 var pathContainer = document.querySelector('.route-container');
 var path = document.querySelector('.train-route__path');
-var renderer = new PIXI.autoDetectRenderer(stageWidth, stageHeight, { transparent: true, antialias: true });
+var renderer = new PIXI.autoDetectRenderer(stageWidth, stageHeight, { transparent: true });
 var stage = new PIXI.Container();
 var trains = {
   left: [],
   right: []
 };
 var stationPos = {
-  left: stageWidth * 0.125,
-  right: stageWidth - stageWidth * 0.125
+  left: stageWidth * 0.1,
+  right: stageWidth - stageWidth * 0.1
 };
 // Momentum vars
 var trackingPoints = [];
-var friction = 0.92;
+var friction = 0.94;
 var stopThreshold = 0.3;
 
 /*
@@ -87,10 +87,9 @@ function angle(cx, cy, ex, ey) {
  */
 
 function moveTrain(posX, side, train, callback, decVelX) {
-  var yCorrection = 1.1042;
-  var scale = path.getTotalLength() / pathContainer.offsetWidth;
-  var svgX = Math.min(Math.max(pathContainer.getBoundingClientRect().left, posX), pathContainer.offsetWidth);
-  var svgPosition = path.getPointAtLength((svgX - pathContainer.getBoundingClientRect().left) * scale);
+  var scale = 800 / pathContainer.offsetWidth;
+  var svgX = Math.min(Math.max(pathContainer.getBoundingClientRect().left, posX), pathContainer.offsetWidth + pathContainer.getBoundingClientRect().left);
+  var svgPosition = path.getPointAtLength(svgX * scale - pathContainer.getBoundingClientRect().left);
   var posY = pathContainer.getBoundingClientRect().top;
   var currentPos = {
     x: train.train.position.x,
@@ -100,11 +99,11 @@ function moveTrain(posX, side, train, callback, decVelX) {
 
   if (side === 'left') {
     // animate down - top
-    posY += pathContainer.offsetHeight * 2 - svgPosition.y * yCorrection / scale;
+    posY += pathContainer.offsetHeight * 2 - svgPosition.y / scale;
     posX = Math.max(posX, stationPos.left);
   } else {
     // animate top - down
-    posY += svgPosition.y * yCorrection / scale;
+    posY += svgPosition.y / scale;
     posX = Math.min(posX, stationPos.right);
   }
 
