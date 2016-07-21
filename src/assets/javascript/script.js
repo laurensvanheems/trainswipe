@@ -90,44 +90,45 @@ function angle(cx, cy, ex, ey) {
  * Train animation
  */
 
-function moveTrain(posX, side, train, callback, decVelX) {
+function moveTrain(x, side, trainObj, callback, decVelX) {
   let scale = 800 / pathContainer.offsetWidth;
+  let posX = x + trainObj.startX;
   let svgX = Math.min(Math.max(pathContainer.getBoundingClientRect().left, posX), (pathContainer.offsetWidth + pathContainer.getBoundingClientRect().left));
   let svgPosition = path.getPointAtLength(svgX * scale - pathContainer.getBoundingClientRect().left);
   let posY = pathContainer.getBoundingClientRect().top;
   let currentPos = {
-    x: train.train.position.x,
-    y: train.train.position.y
+    x: trainObj.train.position.x,
+    y: trainObj.train.position.y
   }
   let trainRotation = 0;
 
   if (side === 'left') {
-    // animate down - top
+    // animate left to right
     posY += (pathContainer.offsetHeight * 2) - (svgPosition.y / scale);
-    posX = Math.max(posX, stationPos.left);
-  } else {
-    // animate top - down
-    posY += (svgPosition.y / scale);
     posX = Math.min(posX, stationPos.right);
+  } else {
+    // animate right to left
+    posY += (svgPosition.y / scale);
+    posX = Math.max(posX, stationPos.left);
   }
 
-  if (trainCollision(train.train)) {
+  if (trainCollision(trainObj.train)) {
     return;
   }
 
   trainRotation = Math.round(angle(currentPos.x, currentPos.y, posX, posY) * 100) / 100;
-  train.train.position.x = posX;
-  train.train.position.y = posY;
-  train.train.rotation = trainRotation;
+  trainObj.train.position.x = posX;
+  trainObj.train.position.y = posY;
+  trainObj.train.rotation = trainRotation;
 
   if (callback) {
     requestAnimationFrame(() => {
-      callback(side, posX, decVelX, train);
+      callback(side, x, decVelX, trainObj);
     });
   }
 }
 
-function momentumAnim(side, targetX, decVelX, train) {
+function momentumAnim(side, targetX, decVelX, trainObj) {
   let maxX = stationPos.right;
   let minX = stationPos.left;
   let diff = 0;
@@ -140,16 +141,14 @@ function momentumAnim(side, targetX, decVelX, train) {
     decVelX  = Math.abs(diff) / 2;
   }
 
-  targetX = (side === 'left' ? Math.min(targetX, maxX) : Math.max(targetX, minX));
-
-	if (Math.abs(decVelX) > stopThreshold && targetX > minX && targetX < maxX) {
-    moveTrain(targetX, side, train, momentumAnim, decVelX);
+  if (Math.abs(decVelX) > stopThreshold && Math.abs(targetX) > minX && Math.abs(targetX) < maxX) {
+    moveTrain(targetX, side, trainObj, momentumAnim, decVelX);
 	} else {
-    train.active = false;
+    trainObj.active = false;
   }
 }
 
-function startMomentum(side, train) {
+function startMomentum(side, trainObj) {
   const MULTIPLIER = 1;
 	let firstPoint = trackingPoints[0];
 	let lastPoint = trackingPoints[trackingPoints.length - 1];
@@ -159,20 +158,21 @@ function startMomentum(side, train) {
   let decVelX = (xOffset / D) || 0; // prevent NaN
 
   if (Math.abs(decVelX) > 1 ) {
-		momentumAnim(side, lastPoint.x, decVelX, train);
+		momentumAnim(side, lastPoint.x, decVelX, trainObj);
 	}
 }
 
-function addTrackingPoint(x, side, train) {
+function addTrackingPoint(x, side, trainObj, startX) {
   let time = Date.now();
-	while (trackingPoints.length > 0) {
+  x -= startX;
+  while (trackingPoints.length > 0) {
 		if (time - trackingPoints[0].time <= 100) {
 			break;
 		}
 		trackingPoints.shift();
 	}
 	trackingPoints.push({x, time});
-  moveTrain(x, side, train);
+  moveTrain(x, side, trainObj);
 }
 
 
@@ -189,22 +189,24 @@ function onTouchStart(event) {
   this.side = 'left';
   this.moving = true;
   x = this.data.getLocalPosition(this.parent).x;
+  this.startX = x;
   trackingPoints = [];
   if (x > stageWidth / 2) {
     this.side = 'right';
   }
-  this.train = getActiveTrain(this.side);
-  if (!this.train) {
+  this.trainObj = getActiveTrain(this.side);
+  this.trainObj.startX = this.trainObj.train.position.x;
+  if (!this.trainObj) {
     this.moving = false;
     return;
   }
-  this.train.active = true;
-  addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side, this.train);
+  this.trainObj.active = true;
+  addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side, this.trainObj, this.startX);
 }
 
 function onTouchMove() {
   if (this.moving) {
-    addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side, this.train);
+    addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side, this.trainObj, this.startX);
   }
 }
 
@@ -213,9 +215,9 @@ function onTouchEnd() {
     return;
   }
   this.moving = false;
-  addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side, this.train);
-  startMomentum(this.side, this.train);
-  this.train.status = 2;
+  addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side, this.trainObj, this.startX);
+  startMomentum(this.side, this.trainObj);
+  this.trainObj.status = 2;
   setActiveTrain(this.side);
   this.data = null;
 }
