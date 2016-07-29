@@ -12,6 +12,7 @@ let pathContainer = document.querySelector('.route-container');
 let path = document.querySelector('.train-route__path');
 let renderer = new PIXI.autoDetectRenderer(stageWidth, stageHeight, {transparent: true});
 let stage = new PIXI.Container();
+let trainTexture;
 let trains = {
   left: [],
   right: []
@@ -83,6 +84,21 @@ function angle(cx, cy, ex, ey) {
   return theta;
 }
 
+function getYPosition(x, side) {
+  let scale = 800 / pathContainer.offsetWidth;
+  let svgX = Math.min(Math.max(pathContainer.getBoundingClientRect().left, x), (pathContainer.offsetWidth + pathContainer.getBoundingClientRect().left));
+  let svgPosition = path.getPointAtLength(svgX * scale - pathContainer.getBoundingClientRect().left);
+  let y = pathContainer.getBoundingClientRect().top;
+
+  if (side === 'left') {
+    y += (pathContainer.offsetHeight * 2) - (svgPosition.y / scale);
+  } else {
+    y += (svgPosition.y / scale);
+  }
+
+  return y;
+}
+
 
 
 
@@ -91,11 +107,8 @@ function angle(cx, cy, ex, ey) {
  */
 
 function moveTrain(x, side, trainObj, callback, decVelX) {
-  let scale = 800 / pathContainer.offsetWidth;
+  let posY;
   let posX = x + trainObj.startX;
-  let svgX = Math.min(Math.max(pathContainer.getBoundingClientRect().left, posX), (pathContainer.offsetWidth + pathContainer.getBoundingClientRect().left));
-  let svgPosition = path.getPointAtLength(svgX * scale - pathContainer.getBoundingClientRect().left);
-  let posY = pathContainer.getBoundingClientRect().top;
   let currentPos = {
     x: trainObj.train.position.x,
     y: trainObj.train.position.y
@@ -104,13 +117,12 @@ function moveTrain(x, side, trainObj, callback, decVelX) {
 
   if (side === 'left') {
     // animate left to right
-    posY += (pathContainer.offsetHeight * 2) - (svgPosition.y / scale);
     posX = Math.min(posX, stationPos.right);
   } else {
     // animate right to left
-    posY += (svgPosition.y / scale);
     posX = Math.max(posX, stationPos.left);
   }
+  posY = getYPosition(posX, side);
 
   if (trainCollision(trainObj.train)) {
     return;
@@ -123,12 +135,12 @@ function moveTrain(x, side, trainObj, callback, decVelX) {
 
   if (callback) {
     requestAnimationFrame(() => {
-      callback(side, x, decVelX, trainObj);
+      callback(side, x, trainObj, decVelX);
     });
   }
 }
 
-function momentumAnim(side, targetX, decVelX, trainObj) {
+function momentumAnim(side, targetX, trainObj, decVelX) {
   let maxX = stationPos.right;
   let minX = stationPos.left;
   let diff = 0;
@@ -144,7 +156,7 @@ function momentumAnim(side, targetX, decVelX, trainObj) {
   if (Math.abs(decVelX) > stopThreshold && Math.abs(targetX) > minX && Math.abs(targetX) < maxX) {
     moveTrain(targetX, side, trainObj, momentumAnim, decVelX);
 	} else {
-    trainObj.active = false;
+    moveTrainOutStation(side, trainObj);
   }
 }
 
@@ -158,7 +170,7 @@ function startMomentum(side, trainObj) {
   let decVelX = (xOffset / D) || 0; // prevent NaN
 
   if (Math.abs(decVelX) > 1 ) {
-		momentumAnim(side, lastPoint.x, decVelX, trainObj);
+		momentumAnim(side, lastPoint.x, trainObj, decVelX);
 	}
 }
 
@@ -178,6 +190,48 @@ function addTrackingPoint(x, side, trainObj, startX) {
 
 
 
+/*
+ * In and out sequence
+ */
+
+function easeTrainTo(endPos, side, trainObj, ease) {
+  let currentPos = {};
+  TweenLite.to(
+    trainObj.train.position,
+    1,
+    {
+      x: endPos,
+      ease: ease,
+      onUpdateParams: ['{self}'],
+      onUpdate: function(tween) {
+        let x = tween.target.x;
+        let y = getYPosition(tween.target.x, side);
+        let trainRotation = Math.round(angle(currentPos.x, currentPos.y, x, y) * 100) / 100;
+        trainObj.train.position.y = getYPosition(tween.target.x, side);
+        trainObj.train.rotation = trainRotation;
+        currentPos.x = x;
+        currentPos.y = y;
+      },
+      onComplete: function() {
+        trainObj.status = 1;
+      }
+    });
+}
+
+function moveTrainOutStation(side, trainObj) {
+  let endPos = (stageWidth + trainObj.train.width);
+  trainObj.active = false;
+  easeTrainTo(endPos, side, trainObj, Power2.easeIn);
+}
+
+function moveTrainToStation(side, trainObj) {
+  let endPos = stationPos[side];
+  easeTrainTo(endPos, side, trainObj, Power2.easeOut);
+}
+
+
+
+
 
 /*
  * Event listeners
@@ -186,22 +240,22 @@ function addTrackingPoint(x, side, trainObj, startX) {
 function onTouchStart(event) {
   let x;
   this.data = event.data;
+  x = this.data.getLocalPosition(this.parent).x;
   this.side = 'left';
   this.moving = true;
-  x = this.data.getLocalPosition(this.parent).x;
   this.startX = x;
   trackingPoints = [];
   if (x > stageWidth / 2) {
     this.side = 'right';
   }
   this.trainObj = getActiveTrain(this.side);
-  this.trainObj.startX = this.trainObj.train.position.x;
   if (!this.trainObj) {
     this.moving = false;
     return;
   }
+  this.trainObj.startX = this.trainObj.train.position.x;
   this.trainObj.active = true;
-  addTrackingPoint(this.data.getLocalPosition(this.parent).x, this.side, this.trainObj, this.startX);
+  addTrackingPoint(x, this.side, this.trainObj, this.startX);
 }
 
 function onTouchMove() {
@@ -231,12 +285,14 @@ function onTouchEnd() {
 
 function createTrain(side, texture) {
   let train = new PIXI.Sprite(texture);
-  let status = 1;
+  let status = 0;
   let pathTop = pathContainer.getBoundingClientRect().top;
   let position = {
-    x: (side === 'right' ? stationPos.right : stationPos.left),
+    x: (side === 'right' ? stageWidth + train.width : 0 - train.width),
     y: (side === 'right' ? pathTop : (pathTop + pathContainer.offsetHeight * 2))
   };
+  let trainObj = {train: train, status: status, startX: 0}
+  trains[side].push(trainObj);
 
   train.scale.x = 0.4;
   train.scale.y = 0.4;
@@ -245,15 +301,8 @@ function createTrain(side, texture) {
   train.position.x = position.x;
   train.position.y = position.y;
 
-  for (var i = 0; i < trains[side].length; i++) {
-    if (trains[side][i].status === 1) {
-      status = 0;
-      break;
-    }
-  }
-
-  trains[side].push({train: train, status: status});
   stage.addChild(train);
+  moveTrainToStation(side, trainObj);
 }
 
 function createInteractionZone(position) {
@@ -285,19 +334,11 @@ function animate() {
 }
 
 function onAssetsLoaded(loader, resources) {
+  trainTexture = resources.train.texture;
   createInteractionZone({x: 0, y: 0});
   createInteractionZone({x: (stageWidth - stageWidth / 4), y: 0});
-  createTrain('left', resources.train.texture);
-  createTrain('left', resources.train.texture);
-  createTrain('left', resources.train.texture);
-  createTrain('left', resources.train.texture);
-  createTrain('left', resources.train.texture);
-  createTrain('right', resources.train.texture);
-  createTrain('right', resources.train.texture);
-  createTrain('right', resources.train.texture);
-  createTrain('right', resources.train.texture);
-  createTrain('right', resources.train.texture);
 
+  createTrain('left', trainTexture);
   // start animating
   animate();
 }
