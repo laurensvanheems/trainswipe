@@ -34,7 +34,7 @@ let stopThreshold = 0.3;
  */
 
 function getActiveTrain(side) {
-  let activeTrain;
+  let activeTrain = false;
   for (var i = 0; i < trains[side].length; i++) {
     if (trains[side][i].status === 1) {
       activeTrain = trains[side][i];
@@ -194,7 +194,7 @@ function addTrackingPoint(x, side, trainObj, startX) {
  * In and out sequence
  */
 
-function easeTrainTo(endPos, side, trainObj, ease) {
+function easeTrainTo(endPos, side, trainObj, ease, enterGame) {
   let currentPos = {};
   TweenLite.to(
     trainObj.train.position,
@@ -213,7 +213,16 @@ function easeTrainTo(endPos, side, trainObj, ease) {
         currentPos.y = y;
       },
       onComplete: function() {
-        trainObj.status = 1;
+        console.log(trains);
+        if (enterGame) {
+          // New train, check for active train
+          if (!getActiveTrain(side)) {
+            setActiveTrain(side);
+            createTrain('left', trainTexture);
+          }
+        } else {
+
+        }
       }
     });
 }
@@ -221,12 +230,12 @@ function easeTrainTo(endPos, side, trainObj, ease) {
 function moveTrainOutStation(side, trainObj) {
   let endPos = (stageWidth + trainObj.train.width);
   trainObj.active = false;
-  easeTrainTo(endPos, side, trainObj, Power2.easeIn);
+  easeTrainTo(endPos, side, trainObj, Power2.easeIn, false);
 }
 
 function moveTrainToStation(side, trainObj) {
   let endPos = stationPos[side];
-  easeTrainTo(endPos, side, trainObj, Power2.easeOut);
+  easeTrainTo(endPos, side, trainObj, Power2.easeOut, true);
 }
 
 
