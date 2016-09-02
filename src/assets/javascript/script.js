@@ -23,7 +23,7 @@ let stationPos = {
 }
 // Momentum vars
 let trackingPoints = [];
-let friction = 0.94;
+let friction = 0.92;
 let stopThreshold = 0.3;
 
 

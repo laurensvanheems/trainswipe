@@ -25,7 +25,7 @@ var stationPos = {
 };
 // Momentum vars
 var trackingPoints = [];
-var friction = 0.94;
+var friction = 0.92;
 var stopThreshold = 0.3;
 
 /*
