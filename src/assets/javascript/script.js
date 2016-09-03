@@ -1,11 +1,12 @@
+// 0 = in-line
+// 1 = station
+// 2 = on-track
+// 3 = finished
+// 4 = out-of-screen
+
 const LOADER = PIXI.loader;
-const TRAINSTATUS = {
-  0: 'in-line',
-  1: 'station',
-  2: 'on-track',
-  3: 'finished',
-  4: 'out-of-screen'
-}
+
+let trainCounter = 0;
 let stageWidth = window.innerWidth;
 let stageHeight = window.innerHeight;
 let pathContainer = document.querySelector('.route-container');
@@ -25,7 +26,6 @@ let stationPos = {
 let trackingPoints = [];
 let friction = 0.92;
 let stopThreshold = 0.3;
-
 
 
 
@@ -194,48 +194,15 @@ function addTrackingPoint(x, side, trainObj, startX) {
  * In and out sequence
  */
 
-function easeTrainTo(endPos, side, trainObj, ease, enterGame) {
-  let currentPos = {};
-  TweenLite.to(
-    trainObj.train.position,
-    1,
-    {
-      x: endPos,
-      ease: ease,
-      onUpdateParams: ['{self}'],
-      onUpdate: function(tween) {
-        let x = tween.target.x;
-        let y = getYPosition(tween.target.x, side);
-        let trainRotation = Math.round(angle(currentPos.x, currentPos.y, x, y) * 100) / 100;
-        trainObj.train.position.y = getYPosition(tween.target.x, side);
-        trainObj.train.rotation = trainRotation;
-        currentPos.x = x;
-        currentPos.y = y;
-      },
-      onComplete: function() {
-        console.log(trains);
-        if (enterGame) {
-          // New train, check for active train
-          if (!getActiveTrain(side)) {
-            setActiveTrain(side);
-            createTrain('left', trainTexture);
-          }
-        } else {
-
-        }
-      }
-    });
-}
-
 function moveTrainOutStation(side, trainObj) {
   let endPos = (stageWidth + trainObj.train.width);
   trainObj.active = false;
   easeTrainTo(endPos, side, trainObj, Power2.easeIn, false);
 }
 
-function moveTrainToStation(side, trainObj) {
+function moveTrainToStation(side, train) {
   let endPos = stationPos[side];
-  easeTrainTo(endPos, side, trainObj, Power2.easeOut, true);
+  train.easeTo(endPos, side, Power2.easeOut);
 }
 
 
@@ -248,22 +215,22 @@ function moveTrainToStation(side, trainObj) {
 
 function onTouchStart(event) {
   let x;
+  trackingPoints = [];
   this.data = event.data;
   x = this.data.getLocalPosition(this.parent).x;
   this.side = 'left';
   this.moving = true;
   this.startX = x;
-  trackingPoints = [];
   if (x > stageWidth / 2) {
     this.side = 'right';
   }
-  this.trainObj = getActiveTrain(this.side);
-  if (!this.trainObj) {
+  this.train = getActiveTrain(this.side);
+  if (!this.train) {
     this.moving = false;
     return;
   }
-  this.trainObj.startX = this.trainObj.train.position.x;
-  this.trainObj.active = true;
+  this.train.startX = this.train.position.x;
+  this.train.active = true;
   addTrackingPoint(x, this.side, this.trainObj, this.startX);
 }
 
@@ -293,25 +260,19 @@ function onTouchEnd() {
  */
 
 function createTrain(side, texture) {
-  let train = new PIXI.Sprite(texture);
-  let status = 0;
+  let sprite = new PIXI.Sprite(texture);
+  let train = new Train(trainCounter, sprite, 0, side);
   let pathTop = pathContainer.getBoundingClientRect().top;
-  let position = {
-    x: (side === 'right' ? stageWidth + train.width : 0 - train.width),
+
+  trainCounter++;
+  train.moveTo = {
+    x: (side === 'right' ? stageWidth + sprite.width : 0 - sprite.width),
     y: (side === 'right' ? pathTop : (pathTop + pathContainer.offsetHeight * 2))
   };
-  let trainObj = {train: train, status: status, startX: 0}
-  trains[side].push(trainObj);
 
-  train.scale.x = 0.4;
-  train.scale.y = 0.4;
-  train.anchor.x = 0.5;
-  train.anchor.y = 0.5;
-  train.position.x = position.x;
-  train.position.y = position.y;
-
-  stage.addChild(train);
-  moveTrainToStation(side, trainObj);
+  trains[side].push(train);
+  stage.addChild(train.sprite);
+  moveTrainToStation(side, train);
 }
 
 function createInteractionZone(position) {
