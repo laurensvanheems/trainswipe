@@ -215,22 +215,22 @@ function moveTrainToStation(side, train) {
 
 function onTouchStart(event) {
   let x;
-  trackingPoints = [];
   this.data = event.data;
   x = this.data.getLocalPosition(this.parent).x;
   this.side = 'left';
   this.moving = true;
   this.startX = x;
+  trackingPoints = [];
   if (x > stageWidth / 2) {
     this.side = 'right';
   }
   this.train = getActiveTrain(this.side);
-  if (!this.train) {
+  if (!this.trainObj) {
     this.moving = false;
     return;
   }
-  this.train.startX = this.train.position.x;
-  this.train.active = true;
+  this.trainObj.startX = this.trainObj.train.position.x;
+  this.trainObj.active = true;
   addTrackingPoint(x, this.side, this.trainObj, this.startX);
 }
 
